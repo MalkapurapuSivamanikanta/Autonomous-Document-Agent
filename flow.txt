@@ -1,0 +1,164 @@
+Building the Autonomous Document Agent: Steps, Workflow and Architecture (No Code)
+Part 1: Understand what you are building
+Think of it like a small office team inside your computer:
+A manager reads the request and writes a TODO list.
+A writer does one TODO at a time.
+A publisher puts everything into a Word file.
+A receptionist (the API) takes the request and hands back the result.
+The “agent” part is that the AI writes the TODO list itself. You never hard-code what the document should contain.
+Part 2: Architecture
+User
+  │  sends a request (plain English)
+  ▼
+API layer (FastAPI)
+  │  checks the input is valid
+  ▼
+Agent brain (LangGraph)
+  │
+  ├─ Step A: PLANNER     → decides document type, title, assumptions, TODO list
+  ├─ Step B: EXECUTOR    → does TODO #1, then #2, then #3... (a loop)
+  └─ Step C: BUILDER     → assembles the Word file
+  ▼
+LLM helper (Groq)
+  │  every AI call goes through one safe wrapper
+  │  (retry → validate → fallback)
+  ▼
+Response: task list + assumptions + download link for the .docx
+Five building blocks, five files:
+Block	Job
+LLM helper	Talks to the AI safely. Retries and falls back if something breaks
+State	The shared notebook: request, plan, finished sections
+Nodes	Planner, Executor, Builder
+Graph	Connects the nodes and defines the loop
+API	Receives the request, runs the graph, returns the result
+Part 3: Core concepts to learn first (about 30 minutes, before the 60-minute clock)
+What an LLM API call is. You send text, you get text back.
+JSON output. You ask the AI to answer in a fixed structure so your program can read it.
+State in LangGraph. A shared notebook that each step reads and updates.
+Nodes and edges. A node is a step. An edge is an arrow to the next step.
+Conditional edge. An arrow that asks “are there more tasks?” and picks the path. This creates the loop.
+REST endpoint. One URL that accepts a request and returns an answer.
+If you understand these six ideas, the rest is assembly.
+Part 4: Step-by-step build order
+Build bottom-up and test after every step. Never write everything and then run it.
+Step 1: Prepare the environment (5 min)
+Make a project folder and a Python virtual environment.
+Install: FastAPI, Uvicorn, LangGraph, LangChain-Groq, python-docx, python-dotenv.
+Create a free Groq account and get an API key.
+Store the key in a .env file. Never put it in your code.
+Checkpoint: Python runs and the packages import without errors.
+Step 2: Prove the LLM works (5 min)
+Send one tiny question to Groq and print the answer.
+Checkpoint: You see a reply. If not, fix the key or install before doing anything else.
+Step 3: Build the safe LLM wrapper (10 min)
+This is your mandatory engineering improvement. Design it with these rules:
+Ask the AI to reply in JSON only.
+Parse the reply. If parsing fails, try again.
+Check that the required fields exist. If not, try again.
+Try the big model up to 2 times. On the third try, switch to the smaller backup model.
+If everything fails, raise one clear error that the API can report.
+Print a log line on each failure. This helps your debugging story.
+Checkpoint: Test it with a tiny prompt. Then break it on purpose (a wrong model name) and confirm the fallback and error behave as you expect.
+Step 4: Design the state (5 min)
+List what the agent must remember while working:
+the original request
+document type and title
+assumptions the AI made
+the TODO list
+which task number it is on
+the finished sections
+the final file name
+Write this down on paper first. Every node will read and write these fields.
+Step 5: Build the Planner (10 min)
+Write the instructions for the AI (the prompt) to say:
+You are a planner for business documents.
+Pick the best document type for this request.
+If information is missing, state your assumptions.
+If requirements conflict, explain how you resolved them.
+Produce 4 to 7 tasks, one per section.
+Answer in JSON in this exact shape.
+Then add guardrails in your own code: cap the task count and reject an empty plan.
+Checkpoint: Run the planner alone with your two test requests and read the plans. If the plan is bad, improve the prompt. This is the most important quality lever in the whole project.
+Step 6: Build the Executor (10 min)
+For one task at a time, give the AI:
+the original request
+the title and assumptions
+the headings already written (so it does not repeat itself)
+the current task
+It returns one section: heading, paragraphs, bullets. Then your code adds that section to the state and moves the task counter forward.
+Checkpoint: Run it on the first task of a plan and read the section.
+Step 7: Build the Word document builder (10 min)
+This part has no AI. It is plain code that:
+Adds the title and document type.
+Adds an “Assumptions” section.
+Adds each finished section with its heading, paragraphs and bullets.
+Adds an appendix listing the agent’s task list (great for the demo).
+Saves the file with a unique name into an outputs folder.
+Also normalize the data first. AI sometimes returns a string where you expected a list, so convert before writing.
+Checkpoint: Feed it fake sections and open the .docx in Word.
+Step 8: Connect everything with LangGraph (10 min)
+Describe the workflow:
+Start at Planner.
+Go to Executor.
+After Executor, ask: “Are there more tasks?”
+Yes → go back to Executor.
+No → go to Builder.
+After Builder → End.
+Set a recursion limit so a bug can never create an infinite loop.
+Checkpoint: Run the graph with no API yet. Print which node is running to see the loop work.
+Step 9: Wrap it in FastAPI (7 min)
+Create POST /agent that accepts {"request": "..."}.
+Validate the input: not empty, minimum 10 characters, maximum 2000.
+Run the graph.
+Return: a friendly message, the assumptions, the task list, and a download link.
+Create GET /download/{name} to serve the file. Block path tricks like ../.
+Map errors: bad input → 422, AI failure → 502, anything else → 500.
+Checkpoint: Open the auto-generated /docs page and click “Try it out”.
+Step 10: Test both required inputs (5 min)
+Standard request: clear and complete. It should just work.
+Complex request: missing industry and budget, conflicting “fast but very detailed”, and asking for risks.
+For the complex case, check that the assumptions explicitly address each gap and each conflict.
+Step 11: Polish and record (remaining time)
+Write a short README: what it does, how to run it, which improvement you chose and why.
+Keep the two generated .docx files and the two JSON responses as demo material.
+Record the video on video.fluid.ai only.
+Part 5: The workflow in one sentence per stage
+Receive a plain-English request.
+Validate it.
+Plan: the AI decides the document type, assumptions and a TODO list.
+Execute: the AI completes each TODO, one at a time, remembering what is done.
+Recover: any bad AI response triggers retry, then fallback.
+Build: assemble the Word file.
+Respond with the plan, assumptions and a download link.
+Part 6: Time budget for the 60 minutes
+Minutes	Activity
+0–5	Environment and key
+5–15	LLM wrapper
+15–30	State, planner, executor, graph
+30–40	Word builder
+40–47	API
+47–57	Testing and fixing
+57–60	README
+Do the learning (Part 3) and a dry run of Steps 1 to 3 before you start the clock. The assignment says you can start whenever you like, so use that.
+Part 7: How to prepare for the video
+Prepare answers to these four questions. They map to the four video segments.
+Demo: Which two requests will you run? What will you point at (the task list, the assumptions, the .docx)?
+What you built: Can you explain the architecture diagram above in 2 minutes without notes?
+Debugging: Which real problem did you hit, what was the cause, how did you fix it? Write down any bug as it happens during the build so you remember it.
+Tradeoff: Autonomous planning vs. a fixed workflow. The AI planner is flexible but less predictable. You controlled this with validation, a task cap and retry/fallback.
+Part 8: Common beginner mistakes
+Writing all the code before testing anything.
+Spending 30 minutes on prompts for the Word styling instead of getting the end-to-end flow working.
+Forgetting that JSON mode on Groq needs the word “JSON” in the prompt.
+Letting the AI’s output go straight into the document without checking its shape.
+Adding extra features. The assignment wants one improvement done well.
+Submitting a Google Drive link instead of using video.fluid.ai.
+Part 9: What evaluators are looking for
+Criteria	How your project shows it
+Autonomous design	AI writes its own TODO list and loops through it
+Planning and reasoning	Assumptions and conflict resolution in the plan
+Tool orchestration	LLM calls plus the document builder, coordinated by the graph
+API design	Clean endpoint, validation, proper error codes
+Engineering fundamentals	Separate files, a safe wrapper, no hard-coded keys
+Debugging and explanation	A real bug story and a clear tradeoff answer
+If you’d like, I can turn any single step into a more detailed mini-guide, or quiz you on the six core concepts so you feel confident before you start.

@@ -1,0 +1,25 @@
+# Secrets - never commit your API key
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated documents (the folder itself is kept via outputs/.gitkeep)
+outputs/*.docx
+# demo_results/ is NOT ignored on purpose: commit it if you want to show sample runs.
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
